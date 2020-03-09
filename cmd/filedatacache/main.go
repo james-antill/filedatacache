@@ -11,12 +11,15 @@ import (
 func usage() {
 	fmt.Fprintln(os.Stderr, "Usage: fdc <get|put|add> file [key:value]...")
 	os.Exit(2)
-
 }
 
 func main() {
 
 	fdc := filedatacache.New()
+	if fdc == nil {
+		fmt.Fprintln(os.Stderr, "Can't find Cache.")
+		os.Exit(1)
+	}
 
 	if len(os.Args) < 3 {
 		usage()
