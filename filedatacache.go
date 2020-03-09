@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -111,6 +113,11 @@ func KeyFromPath(path string) (Key, error) {
 	return k, nil
 }
 
+func atoi(s string) (int64, error) {
+	i64, err := strconv.ParseInt(s, 10, 64)
+	return i64, err
+}
+
 // Get the Metadata for a given file/key
 func (fdc *FDC) Get(k Key) Metadata {
 	p := fdc.root + "/path/" + k.Path
@@ -130,6 +137,7 @@ func (fdc *FDC) Get(k Key) Metadata {
 	}
 	defer fior.Close()
 
+	// Does it have the correct header...
 	scanner := bufio.NewScanner(fior)
 	if !scanner.Scan() {
 		return nil
@@ -138,6 +146,33 @@ func (fdc *FDC) Get(k Key) Metadata {
 	case "filedatacache-1.0":
 		break
 	default:
+		return nil
+	}
+
+	// Does it have the internal mtime, for cache validation...
+	if !scanner.Scan() {
+		return nil
+	}
+	mtmtxt := scanner.Text()
+	if !strings.HasPrefix(mtmtxt, "mtime: ") {
+		return nil
+	}
+	// FIXME: Load mtime and test it's the same as Stat() ?
+	// Really need to this when we support not having Stat() mtime
+
+	// Does it have the internal length, for cache validation...
+	if !scanner.Scan() {
+		return nil
+	}
+	lentxt := scanner.Text()
+	if !strings.HasPrefix(lentxt, "size: ") {
+		return nil
+	}
+	size, err := atoi(lentxt[6:])
+	if err != nil {
+		return nil
+	}
+	if size != k.Size {
 		return nil
 	}
 
@@ -157,6 +192,19 @@ func (fdc *FDC) Get(k Key) Metadata {
 	return md
 }
 
+// sortedStringKeys to iterate a map[string]string in sorted key order
+func sortedStringKeys(d map[string]string) []string {
+	ret := make([]string, 0, len(d))
+
+	for v := range d {
+		ret = append(ret, v)
+	}
+
+	sort.Strings(ret)
+
+	return ret
+}
+
 // Put new Metadata in the Cache for a given file/key. Fails silently.
 func (fdc *FDC) Put(k Key, md Metadata) error {
 	p := fdc.root + "/path/" + k.Path
@@ -173,7 +221,18 @@ func (fdc *FDC) Put(k Key, md Metadata) error {
 
 	iow := bufio.NewWriter(fiow)
 	fmt.Fprintln(iow, "filedatacache-1.0")
-	for k, v := range md {
+	tm := k.ModTime
+	if tm.Nanosecond() == 0 {
+		fmt.Fprintf(iow, "mtime: %d\n", tm.Unix())
+	} else {
+		timeFmt := ".000000000"
+		fmt.Fprintf(iow, "mtime: %d%s\n", tm.Unix(), tm.Format(timeFmt))
+	}
+	fmt.Fprintf(iow, "size: %d\n", k.Size)
+
+	// Now save the metadata, in order because sameness...
+	for _, k := range sortedStringKeys(md) {
+		v := md[k]
 		fmt.Fprintf(iow, "%s: %s\n", k, v)
 	}
 
