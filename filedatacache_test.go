@@ -34,7 +34,7 @@ func TestFile(t *testing.T) {
 	}
 
 	pmd := make(Metadata)
-	pmd["len"] = "5"
+	pmd["len"] = "8"
 	pmd["C"] = "JAM"
 
 	if err := fdc.Put(k, pmd); err != nil {
@@ -45,7 +45,7 @@ func TestFile(t *testing.T) {
 	if gmd == nil {
 		t.Errorf("Not found cache: %v\n", k.Path)
 	}
-	if gmd["len"] != "5" {
+	if gmd["len"] != "8" {
 		t.Errorf("Get(%s) error: %v != %v\n", k.Path, gmd["len"], "5")
 	}
 	if gmd["C"] != "JAM" {

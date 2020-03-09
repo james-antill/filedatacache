@@ -154,7 +154,7 @@ func (fdc *FDC) Get(k Key) Metadata {
 		return nil
 	}
 	mtmtxt := scanner.Text()
-	if !strings.HasPrefix(mtmtxt, "mtime: ") {
+	if !strings.HasPrefix(mtmtxt, ":mtime: ") {
 		return nil
 	}
 	// FIXME: Load mtime and test it's the same as Stat() ?
@@ -165,10 +165,10 @@ func (fdc *FDC) Get(k Key) Metadata {
 		return nil
 	}
 	lentxt := scanner.Text()
-	if !strings.HasPrefix(lentxt, "size: ") {
+	if !strings.HasPrefix(lentxt, ":size: ") {
 		return nil
 	}
-	size, err := atoi(lentxt[6:])
+	size, err := atoi(lentxt[7:])
 	if err != nil {
 		return nil
 	}
@@ -176,9 +176,15 @@ func (fdc *FDC) Get(k Key) Metadata {
 		return nil
 	}
 
+	moreHeaders := true
 	md := make(Metadata)
 	for scanner.Scan() {
 		txt := scanner.Text()
+		if moreHeaders && txt[0] == ':' {
+			continue
+		}
+		moreHeaders = false
+
 		kv := strings.SplitN(txt, ": ", 2)
 		if len(kv) != 2 {
 			return nil
@@ -223,12 +229,12 @@ func (fdc *FDC) Put(k Key, md Metadata) error {
 	fmt.Fprintln(iow, "filedatacache-1.0")
 	tm := k.ModTime
 	if tm.Nanosecond() == 0 {
-		fmt.Fprintf(iow, "mtime: %d\n", tm.Unix())
+		fmt.Fprintf(iow, ":mtime: %d\n", tm.Unix())
 	} else {
 		timeFmt := ".000000000"
-		fmt.Fprintf(iow, "mtime: %d%s\n", tm.Unix(), tm.Format(timeFmt))
+		fmt.Fprintf(iow, ":mtime: %d%s\n", tm.Unix(), tm.Format(timeFmt))
 	}
-	fmt.Fprintf(iow, "size: %d\n", k.Size)
+	fmt.Fprintf(iow, ":size: %d\n", k.Size)
 
 	// Now save the metadata, in order because sameness...
 	for _, k := range sortedStringKeys(md) {
