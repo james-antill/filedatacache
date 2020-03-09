@@ -73,7 +73,7 @@ func CacheRoot() string {
 		return ""
 	}
 
-	path := root + "filedatacache/"
+	path := root + "/filedatacache"
 
 	return path
 }
@@ -113,7 +113,7 @@ func KeyFromPath(path string) (Key, error) {
 
 // Get the Metadata for a given file/key
 func (fdc *FDC) Get(k Key) Metadata {
-	p := fdc.root + k.Path
+	p := fdc.root + "/path/" + k.Path
 
 	fi, err := os.Stat(p)
 	if err != nil {
@@ -159,7 +159,7 @@ func (fdc *FDC) Get(k Key) Metadata {
 
 // Put new Metadata in the Cache for a given file/key. Fails silently.
 func (fdc *FDC) Put(k Key, md Metadata) error {
-	p := fdc.root + k.Path
+	p := fdc.root + "/path/" + k.Path
 
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 		return fmt.Errorf("Put %v: %w", k.Path, err)
