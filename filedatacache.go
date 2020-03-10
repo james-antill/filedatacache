@@ -118,6 +118,11 @@ func atoi(s string) (int64, error) {
 	return i64, err
 }
 
+// CacheRoot returns the root of the FileDataCase
+func (fdc FDC) CacheRoot() string {
+	return fdc.root
+}
+
 // Get the Metadata for a given file/key
 func (fdc *FDC) Get(k Key) Metadata {
 	p := fdc.root + "/path/" + k.Path
@@ -211,6 +216,11 @@ func sortedStringKeys(d map[string]string) []string {
 	return ret
 }
 
+// SortedKeys returns the keys in the Metadata, sorted
+func (md Metadata) SortedKeys() []string {
+	return sortedStringKeys(md)
+}
+
 // Put new Metadata in the Cache for a given file/key. Fails silently.
 func (fdc *FDC) Put(k Key, md Metadata) error {
 	p := fdc.root + "/path/" + k.Path
@@ -237,7 +247,7 @@ func (fdc *FDC) Put(k Key, md Metadata) error {
 	fmt.Fprintf(iow, ":size: %d\n", k.Size)
 
 	// Now save the metadata, in order because sameness...
-	for _, k := range sortedStringKeys(md) {
+	for _, k := range md.SortedKeys() {
 		v := md[k]
 		fmt.Fprintf(iow, "%s: %s\n", k, v)
 	}
