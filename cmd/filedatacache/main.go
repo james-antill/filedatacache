@@ -15,28 +15,106 @@ func usage() {
 	os.Exit(2)
 }
 
-func sortedIntKeys(d map[int]int64) []int {
+func intKeys(d map[int]int64) []int {
 	ret := make([]int, 0, len(d))
 
-	for v := range d {
-		ret = append(ret, v)
+	for k := range d {
+		ret = append(ret, k)
 	}
 
+	return ret
+}
+
+func sortedIntKeys(d map[int]int64) []int {
+	ret := intKeys(d)
 	sort.Ints(ret)
 
 	return ret
 }
 
-func sortedInt64Keys(d map[int64]int64) []int64 {
+func int64Keys(d map[int64]int64) []int64 {
 	ret := make([]int64, 0, len(d))
 
-	for v := range d {
-		ret = append(ret, v)
+	for k := range d {
+		ret = append(ret, k)
 	}
+
+	return ret
+}
+
+func sortedInt64Keys(d map[int64]int64) []int64 {
+	ret := int64Keys(d)
 
 	sort.Slice(ret, func(i, j int) bool { return ret[i] < ret[j] })
 
 	return ret
+}
+
+func minMax(entries []int64) (int64, int64) {
+	if len(entries) < 1 {
+		return 0, 0
+	}
+
+	min := entries[0]
+	max := entries[0]
+	for _, v := range entries {
+		if v < min {
+			min = v
+		}
+		if v > max {
+			max = v
+		}
+	}
+
+	return min, max
+}
+
+func histoBuckets(entries []int64, size int) (map[int64]int64,
+	int64, int64, int64) {
+	ret := make(map[int64]int64)
+
+	if size < 1 {
+		size = 1
+	}
+
+	min, max := minMax(entries)
+	diff := max - min
+	off := diff / int64(size)
+	for _, v := range entries {
+		nv := (v - min) / off
+		if nv != int64(size) { // The last value overflows...
+			nv++
+		}
+		ret[v] = nv
+	}
+
+	return ret, min, off, max
+}
+
+func histoCombine(entries map[int64]int64,
+	hist map[int64]int64) map[int64]int64 {
+	ret := make(map[int64]int64)
+
+	for k, v := range entries {
+		ret[hist[k]] += v
+	}
+
+	return ret
+}
+
+func num2hashes(num int64, min, max, hashes int64) string {
+	if num < min {
+		num = min
+	}
+	if num > max {
+		num = max
+	}
+
+	diff := max - min
+	off := diff / hashes
+	pc := (num - min) / off
+
+	return strings.Repeat("#", int(pc))
 }
 
 func main() {
@@ -49,13 +127,15 @@ func main() {
 
 	var k filedatacache.Key
 
+	if len(os.Args) < 2 {
+		usage()
+	}
+
 	switch os.Args[1] {
 	case "sum":
 		fallthrough
 	case "summary":
-		if len(os.Args) < 2 {
-			usage()
-		}
+		break
 
 	default:
 		if len(os.Args) < 3 {
@@ -70,6 +150,9 @@ func main() {
 	case "sum":
 		fallthrough
 	case "summary": // Also removes old entries ... eh.
+		var numFiles int64
+		var numDeletes int64
+
 		szData := make(map[int64]int64)
 		numData := make(map[int]int64)
 		err := filepath.Walk(fdc.CacheRoot(), func(path string, fi os.FileInfo, err error) error {
@@ -80,13 +163,16 @@ func main() {
 			rpath := strings.TrimPrefix(path, fdc.CacheRoot()+"/path")
 			k, err := filedatacache.KeyFromPath(rpath)
 			if err != nil {
+				numDeletes++
 				os.Remove(path)
 				return nil
 			}
 			if md := fdc.Get(k); md != nil {
 				szData[k.Size]++
 				numData[len(md)]++
+				numFiles++
 			} else {
+				numDeletes++
 				os.Remove(path)
 			}
 
@@ -97,13 +183,33 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Println("Data for file sizes:")
-		for _, k := range sortedInt64Keys(szData) {
-			fmt.Printf("%v: %v\n", k, szData[k])
+		buck, firstk, diff, lastk := histoBuckets(int64Keys(szData), 8)
+		prevk := firstk
+		vals := histoCombine(szData, buck)
+		kmaxlen := len(fmt.Sprintf("%v", lastk))
+		//		for _, k := range sortedInt64Keys(vals) {
+		var vmaxnum int64
+		for k := int64(1); k <= 8; k++ {
+			if vmaxnum < vals[k] {
+				vmaxnum = vals[k]
+			}
+		}
+		vmaxlen := len(fmt.Sprintf("%v", vmaxnum))
+		for k := int64(1); k <= 8; k++ {
+			nk := prevk + diff
+			if k == 8 {
+				nk = lastk
+			}
+			fmt.Printf("%*v-%*v: %*v %s\n", kmaxlen, prevk, kmaxlen, nk,
+				vmaxlen, vals[k], num2hashes(vals[k], 0, vmaxnum, 40))
+			prevk = nk
 		}
 		fmt.Println("Data for number of Metadata entries:")
 		for _, k := range sortedIntKeys(numData) {
 			fmt.Printf("%v: %v\n", k, numData[k])
 		}
+		fmt.Println("Number of files in cache:", numFiles)
+		fmt.Println("Number of files deleted:", numDeletes)
 
 	case "get":
 		if md = fdc.Get(k); md != nil {
