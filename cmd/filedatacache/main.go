@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 
 	"github.com/james-antill/filedatacache"
 )
@@ -117,6 +118,14 @@ func num2hashes(num int64, min, max, hashes int64) string {
 	return strings.Repeat("#", int(pc))
 }
 
+const workersNum = 32
+
+// KMD is a holder for the key and metadata, because no tuples for channels
+type KMD struct {
+	md filedatacache.Metadata
+	k  filedatacache.Key
+}
+
 func main() {
 
 	fdc := filedatacache.New()
@@ -155,29 +164,52 @@ func main() {
 
 		szData := make(map[int64]int64)
 		numData := make(map[int]int64)
+
+		sem := make(chan int, workersNum)
+
+		found := make(chan *KMD, 1)
+		go func() {
+			for kmd := range found {
+				k := kmd.k
+				md := kmd.md
+
+				szData[k.Size]++
+				numData[len(md)]++
+				numFiles++
+			}
+		}()
+
 		err := filepath.Walk(fdc.CacheRoot(), func(path string, fi os.FileInfo, err error) error {
 			if fi.IsDir() {
 				return nil
 			}
 
-			rpath := strings.TrimPrefix(path, fdc.CacheRoot()+"/path")
-			k, err := filedatacache.KeyFromPath(rpath)
-			if err != nil {
-				numDeletes++
-				os.Remove(path)
-				return nil
-			}
-			if md := fdc.Get(k); md != nil {
-				szData[k.Size]++
-				numData[len(md)]++
-				numFiles++
-			} else {
-				numDeletes++
-				os.Remove(path)
-			}
+			sem <- 1
+			go func() {
+				defer func() { <-sem }()
+
+				rpath := strings.TrimPrefix(path, fdc.CacheRoot()+"/path")
+				k, err := filedatacache.KeyFromPath(rpath)
+				if err != nil {
+					atomic.AddInt64(&numDeletes, 1)
+					os.Remove(path)
+				}
+				if md := fdc.Get(k); md != nil {
+					found <- &KMD{k: k, md: md}
+				} else {
+					atomic.AddInt64(&numDeletes, 1)
+					os.Remove(path)
+				}
+			}()
 
 			return nil
 		})
+		for i := 0; i < workersNum; i++ {
+			sem <- 2
+		}
+		close(sem)
+		close(found)
+
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Failed cache walk:", err)
 			os.Exit(1)
