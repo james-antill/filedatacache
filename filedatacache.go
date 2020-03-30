@@ -98,6 +98,17 @@ func NewRoot(root string) *FDC {
 	return &FDC{root}
 }
 
+// KeyFromPathFileInfo gets a full Key, with a normalized path, from any path
+// and FileInfo.
+func KeyFromPathFileInfo(path string, fi os.FileInfo) (Key, error) {
+	k := Key{path, fi.ModTime(), fi.Size()}
+	if err := k.Normalize(); err != nil {
+		return Key{}, fmt.Errorf("KeyFromPath %v: %w", path, err)
+	}
+
+	return k, nil
+}
+
 // KeyFromPath gets a full Key, with a normalized path, from any path
 func KeyFromPath(path string) (Key, error) {
 	fi, err := os.Stat(path)
@@ -105,12 +116,7 @@ func KeyFromPath(path string) (Key, error) {
 		return Key{}, fmt.Errorf("KeyFromPath %v: %w", path, err)
 	}
 
-	k := Key{path, fi.ModTime(), fi.Size()}
-	if err := k.Normalize(); err != nil {
-		return Key{}, fmt.Errorf("KeyFromPath %v: %w", path, err)
-	}
-
-	return k, nil
+	return KeyFromPathFileInfo(path, fi)
 }
 
 func atoi(s string) (int64, error) {
